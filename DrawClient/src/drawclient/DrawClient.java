@@ -16,14 +16,18 @@ import java.util.ArrayList;
 import javax.swing.JButton;
 import javax.swing.JColorChooser;
 import javax.swing.JFrame;
+import javax.swing.JOptionPane;
 import javax.swing.JPanel;
+import javax.swing.colorchooser.AbstractColorChooserPanel;
+import javax.swing.event.ChangeEvent;
+import javax.swing.event.ChangeListener;
 
 /**
  *
  * @author Doreen
  */
 public class DrawClient extends JPanel 
-    implements MouseMotionListener, MouseListener{
+    implements MouseMotionListener, MouseListener, ChangeListener{
 
     private static class Point
     {
@@ -63,6 +67,19 @@ public class DrawClient extends JPanel
         color = Color.BLACK;
         
         colorChooser = new JColorChooser(color);
+        //remove preview panel from color chooser
+        colorChooser.setPreviewPanel(new JPanel());
+        
+        //keep only the swatches panel for jcolorchooser
+        AbstractColorChooserPanel[] panels = colorChooser.getChooserPanels();
+        for (AbstractColorChooserPanel accp : panels) {
+            if (!accp.getDisplayName().equals("Swatches")) {
+                colorChooser.removeChooserPanel(accp);
+            }
+        }
+        //add changelistener which detects when a new color is chose
+        colorChooser.getSelectionModel().addChangeListener(this);
+        
         undoButton = new JButton("Undo");
         this.setBackground(Color.WHITE);
         this.addMouseMotionListener(this);
@@ -71,8 +88,9 @@ public class DrawClient extends JPanel
         nextButton = new JButton("Next Page");
         undoButton.setEnabled(false);
         prevButton.setEnabled(false);
+        
+        //allows you to change pages(previous page)
         prevButton.addActionListener(new ActionListener()
-                
         {
 
             @Override
@@ -94,6 +112,7 @@ public class DrawClient extends JPanel
             
             
         });
+        //allows you to change pages(next page)
         nextButton.addActionListener(new ActionListener()
         {
             @Override
@@ -107,6 +126,7 @@ public class DrawClient extends JPanel
             
         });
 
+        //undos the last point to point segment or drawing
         undoButton.addActionListener(new ActionListener()
         {
             @Override
@@ -116,8 +136,16 @@ public class DrawClient extends JPanel
             }
                
         });
+        
     }
-    
+    //for detecting color changes
+    @Override
+    public void stateChanged(ChangeEvent e) 
+    {
+        color = colorChooser.getColor();
+        System.out.println(color);
+    }
+    //undo last drawing
     public void undo()
     {
         synchronized(points)
@@ -140,7 +168,7 @@ public class DrawClient extends JPanel
         }
     }
     
-    
+    //paint each point as it is received
     @Override
     public void paintComponent(Graphics g){
         super.paintComponent(g);
@@ -168,7 +196,7 @@ public class DrawClient extends JPanel
      * @param args the command line arguments
      */
     public static void main(String[] args) {
-        
+        DrawClient panel = new DrawClient();
     }
 
     
