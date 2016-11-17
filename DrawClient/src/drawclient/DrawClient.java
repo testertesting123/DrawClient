@@ -10,6 +10,7 @@ import java.awt.Dimension;
 import java.awt.Graphics;
 import java.awt.GridBagConstraints;
 import java.awt.GridBagLayout;
+import java.awt.Image;
 import java.awt.Insets;
 import java.awt.Toolkit;
 import java.awt.event.ActionEvent;
@@ -17,7 +18,12 @@ import java.awt.event.ActionListener;
 import java.awt.event.MouseEvent;
 import java.awt.event.MouseListener;
 import java.awt.event.MouseMotionListener;
+import java.io.IOException;
 import java.util.ArrayList;
+import java.util.logging.Level;
+import java.util.logging.Logger;
+import javax.imageio.ImageIO;
+import javax.swing.ImageIcon;
 import javax.swing.JButton;
 import javax.swing.JColorChooser;
 import javax.swing.JFrame;
@@ -84,6 +90,7 @@ public class DrawClient extends JPanel
         colorChooser.getSelectionModel().addChangeListener(this);
         
         undoButton = new JButton("Undo");
+
         this.setBackground(Color.WHITE);
         this.addMouseMotionListener(this);
         this.addMouseListener(this);
@@ -156,6 +163,42 @@ public class DrawClient extends JPanel
             }
                
         });
+        
+        Image img;
+        try {
+            img = ImageIO.read(getClass().getResource("/resources/UndoButton.png"));
+            img = img.getScaledInstance( 50, 50,  java.awt.Image.SCALE_SMOOTH ) ;
+            undoButton.setIcon(new ImageIcon(img));
+            undoButton.setBorderPainted(false);
+            undoButton.setBorder(null);
+            undoButton.setMargin(new Insets(0, 0, 0, 0));
+            undoButton.setContentAreaFilled(false);
+            
+            img = ImageIO.read(getClass().getResource("/resources/BackButton.png"));
+            img = img.getScaledInstance( 50, 50,  java.awt.Image.SCALE_SMOOTH ) ;
+            prevButton.setIcon(new ImageIcon(img));
+            prevButton.setBorderPainted(false);
+            prevButton.setBorder(null);
+            prevButton.setMargin(new Insets(0, 0, 0, 0));
+            prevButton.setContentAreaFilled(false);
+            
+            img = ImageIO.read(getClass().getResource("/resources/ForwardButton.png"));
+            img = img.getScaledInstance( 50, 50,  java.awt.Image.SCALE_SMOOTH ) ;
+            nextButton.setIcon(new ImageIcon(img));
+            nextButton.setBorderPainted(false);
+            nextButton.setBorder(null);
+            nextButton.setMargin(new Insets(0, 0, 0, 0));
+            nextButton.setContentAreaFilled(false);
+            
+            
+        } catch (IOException ex) {
+            Logger.getLogger(DrawClient.class.getName()).log(Level.SEVERE, null, ex);
+        }
+        
+        
+        
+        
+        
         
         setPreferredSize(Toolkit.getDefaultToolkit().getScreenSize());
         scrollPanel = new JScrollPane(this);
