@@ -6,7 +6,12 @@
 package drawclient;
 
 import java.awt.Color;
+import java.awt.Dimension;
 import java.awt.Graphics;
+import java.awt.GridBagConstraints;
+import java.awt.GridBagLayout;
+import java.awt.Insets;
+import java.awt.Toolkit;
 import java.awt.event.ActionEvent;
 import java.awt.event.ActionListener;
 import java.awt.event.MouseEvent;
@@ -16,8 +21,8 @@ import java.util.ArrayList;
 import javax.swing.JButton;
 import javax.swing.JColorChooser;
 import javax.swing.JFrame;
-import javax.swing.JOptionPane;
 import javax.swing.JPanel;
+import javax.swing.JScrollPane;
 import javax.swing.colorchooser.AbstractColorChooserPanel;
 import javax.swing.event.ChangeEvent;
 import javax.swing.event.ChangeListener;
@@ -33,13 +38,10 @@ public class DrawClient extends JPanel
     {
         private int xpos, ypos, time, pgNum;
         private Color color;
-        private Point prevPoint;
         public int getXPos() { return xpos;}
         public int getYPos() { return ypos;}
         public int getTime() { return time;}
         public int getPage() { return pgNum;}
-        public Point getPrevPoint() {return prevPoint;}
-        public void setPrevPoint(Point point){prevPoint = point;}
         public Color getColor() { return color;}
         Point(int x, int y, int t, Color color, int page)
         {
@@ -50,21 +52,22 @@ public class DrawClient extends JPanel
             this.pgNum = page;
         }
     }
-    private final ArrayList<Point> points = new ArrayList<>();
-    private Point prevPoint;
-    private JButton undoButton;
+    private final ArrayList<ArrayList<ArrayList<Point>>> directory = new ArrayList<>();
+    private final JButton undoButton;
     private JButton prevButton;
     private JButton nextButton;
-    private JColorChooser colorChooser;
-    private String name;
+    private final JColorChooser colorChooser;
     private Color color;
     private int page;
-    private final JFrame window = new JFrame("Drawing Application");
-    
+    private final JScrollPane scrollPanel;
+    private final JPanel panel;
     DrawClient()
     {
-        page = 1;
+        page = 0;
         color = Color.BLACK;
+        
+        //init first page
+        directory.add(new ArrayList<>());
         
         colorChooser = new JColorChooser(color);
         //remove preview panel from color chooser
@@ -96,13 +99,17 @@ public class DrawClient extends JPanel
             @Override
             public void actionPerformed(ActionEvent e) 
             {
-                if(page != 1)
+                if(page != 0)
                 {
                     page--;
-                    repaint();
-                    if(page == 1)
+                    if(page == 0)
                         prevButton.setEnabled(false);
                     nextButton.setEnabled(true);
+                    if(!directory.get(page).isEmpty())
+                        undoButton.setEnabled(true);
+                    else
+                        undoButton.setEnabled(false);
+                    repaint();
                 }
                 else
                 {
@@ -118,8 +125,21 @@ public class DrawClient extends JPanel
             @Override
             public void actionPerformed(ActionEvent e) 
             {
+                
                 prevButton.setEnabled(true);
                 page++;
+                try
+                {
+                    directory.get(page);
+                }
+                catch(IndexOutOfBoundsException ie)
+                {
+                    directory.add(new ArrayList<>());
+                }
+                if(!directory.get(page).isEmpty())
+                    undoButton.setEnabled(true);
+                else
+                    undoButton.setEnabled(false);
                 repaint();
             }
             
@@ -137,7 +157,55 @@ public class DrawClient extends JPanel
                
         });
         
+        setPreferredSize(Toolkit.getDefaultToolkit().getScreenSize());
+        scrollPanel = new JScrollPane(this);
+        panel = new JPanel(new GridBagLayout());
+        GridBagConstraints c = new GridBagConstraints();
+        
+        c.anchor = GridBagConstraints.FIRST_LINE_START;
+        c.gridx = 0;
+        c.gridy = 0;
+        c.insets = new Insets(10,10,0,0);
+        panel.add(undoButton,c);
+        
+        c.anchor = GridBagConstraints.PAGE_START;
+        c.gridx = 1;
+        c.gridy = 0;
+        panel.add(prevButton,c);
+        
+        c.gridx = 2;
+        c.gridy = 0;
+        panel.add(nextButton,c);
+        
+//      c.gridx = 3;
+//      c.gridy = 0;
+//      panel.add(recordButton,c);
+        
+        c.gridx = 4;
+        c.gridy = 0;
+        c.gridwidth = 3;
+        c.gridheight = 1;
+        panel.add(colorChooser,c);
+        
+//        c.gridx = 0;
+//        c.gridy = 0;
+//        c.gridwidth = 1;
+//        c.gridheight = 1;
+//        panel.add(eraserButton,c);
+        
+        c.fill = GridBagConstraints.BOTH;
+        c.gridx = 0;
+        c.gridy = 1;
+        c.weighty = 1;
+        c.weightx = 1;
+        panel.add(scrollPanel,c);
     }
+    
+    public JPanel getPanel()
+    {
+        return panel;
+    }
+    
     //for detecting color changes
     @Override
     public void stateChanged(ChangeEvent e) 
@@ -145,24 +213,18 @@ public class DrawClient extends JPanel
         color = colorChooser.getColor();
         System.out.println(color);
     }
-    //undo last drawing
+    
+    //undo last shape
     public void undo()
     {
-        synchronized(points)
+        synchronized(directory)
         {
             
-            if(points.size() > 0)
+            if(directory.get(page).size() > 0)
             {
-                int index = points.size()-1;
-                while(points.get(index).prevPoint != null)
-                {
-                    points.remove(index);
-                    repaint();
-                    index--;
-                }
-                points.remove(index);
+                directory.get(page).remove(directory.get(page).size()-1);
                 repaint();
-                if(points.isEmpty())
+                if(directory.get(page).isEmpty())
                     undoButton.setEnabled(false);
             }
         }
@@ -170,33 +232,52 @@ public class DrawClient extends JPanel
     
     //paint each point as it is received
     @Override
-    public void paintComponent(Graphics g){
+    public void paintComponent(Graphics g)
+    {
         super.paintComponent(g);
-        synchronized(points)
+        synchronized(directory)
         {
-            for (Point point : points) 
+            int l = 0;
+            for (ArrayList<Point> ary : directory.get(page)) 
             {
-                if(point.pgNum == page)
+                for(Point point : ary)
                 {
                     g.setColor(point.getColor());
-                    if(point.getPrevPoint() != null)
-                        g.drawLine(point.getPrevPoint().getXPos(),
-                                   point.getPrevPoint().getYPos(), 
+                    int index = directory.get(page).get(l).indexOf(point);
+                    if(index != 0)
+                        g.drawLine(directory.get(page).get(l).get(index-1).getXPos(),
+                                   directory.get(page).get(l).get(index-1).getYPos(), 
                                    point.getXPos(), 
                                    point.getYPos());
                     //if you press the mouse but dont drag the mouse, still draw a dot
                     else 
                         g.fillRect(point.getXPos(), point.getYPos(), 1,1);
+                    
                 }
+                l++;
             }
         }
     }
+    
     
     /**
      * @param args the command line arguments
      */
     public static void main(String[] args) {
+        JFrame window = new JFrame("Drawing Application");
         DrawClient panel = new DrawClient();
+        
+        
+        window.add(panel.getPanel());
+        Dimension dimen = Toolkit.getDefaultToolkit().getScreenSize();
+        window.setPreferredSize(new Dimension(dimen.width/2,dimen.height/2));
+        window.setDefaultCloseOperation(JFrame.EXIT_ON_CLOSE);
+        window.setLocation(100,100);
+        window.setExtendedState(JFrame.MAXIMIZED_BOTH); 
+        
+        window.pack();
+        window.setLocationRelativeTo(null);
+        window.setVisible(true);
     }
 
     
@@ -207,9 +288,7 @@ public class DrawClient extends JPanel
     public void mouseDragged(MouseEvent e) 
     {
         Point point = new Point(e.getX(),e.getY(),0, color, page);
-        point.setPrevPoint(prevPoint);
-        points.add(point);
-        prevPoint = point;
+        directory.get(page).get(directory.get(page).size()-1).add(point);
         repaint();    
         
     }
@@ -226,11 +305,11 @@ public class DrawClient extends JPanel
     public void mousePressed(MouseEvent e) 
     { 
         undoButton.setEnabled(true);
+        directory.get(page).add(new ArrayList<>());
         //if you press the mouse make a starting point
         Point point = new Point(e.getX(),e.getY(),0, color, page);
-        prevPoint = point;
-        point.setPrevPoint(null);
-        points.add(point);
+        directory.get(page).get(directory.get(page).size()-1).add(point);
+        
     }
 
     @Override
