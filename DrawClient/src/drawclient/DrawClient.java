@@ -15,13 +15,18 @@ import java.awt.GridBagConstraints;
 import java.awt.GridBagLayout;
 import java.awt.Image;
 import java.awt.Insets;
+import java.awt.RenderingHints;
 import java.awt.Toolkit;
 import java.awt.event.ActionEvent;
 import java.awt.event.ActionListener;
 import java.awt.event.MouseEvent;
 import java.awt.event.MouseListener;
 import java.awt.event.MouseMotionListener;
+import java.io.BufferedOutputStream;
+import java.io.FileOutputStream;
 import java.io.IOException;
+import java.io.ObjectOutputStream;
+import java.io.Serializable;
 import java.util.ArrayList;
 import java.util.logging.Level;
 import java.util.logging.Logger;
@@ -29,7 +34,9 @@ import javax.imageio.ImageIO;
 import javax.swing.ImageIcon;
 import javax.swing.JButton;
 import javax.swing.JColorChooser;
+import javax.swing.JComboBox;
 import javax.swing.JFrame;
+import javax.swing.JOptionPane;
 import javax.swing.JPanel;
 import javax.swing.JScrollPane;
 import javax.swing.SwingConstants;
@@ -44,19 +51,20 @@ import javax.swing.event.ChangeListener;
 public class DrawClient extends JPanel 
     implements MouseMotionListener, MouseListener, ChangeListener{
 
-    private static class Point
+    public static class Point implements Serializable
     {
-        private int xpos, ypos, time, pgNum;
+        private int xpos, ypos, pgNum;
+        private long time;
         private Color color;
-        private BasicStroke stroke;
+        private int stroke;
         
         public int getXPos() { return xpos;}
         public int getYPos() { return ypos;}
-        public int getTime() { return time;}
+        public long getTime() { return time;}
         public int getPage() { return pgNum;}
         public Color getColor() { return color;}
-        public BasicStroke getStroke() {return stroke;}
-        Point(int x, int y, int t, Color color, int page, BasicStroke stroke)
+        public int getStroke() {return stroke;}
+        Point(int x, int y, long t, Color color, int page, int stroke)
         {
             xpos = x;
             ypos = y;
@@ -74,13 +82,18 @@ public class DrawClient extends JPanel
     private final JButton eraserButton;
     private final JButton drawButton;
     private final JColorChooser colorChooser;
+    private final JComboBox comboBox;
     private Color color;
     private int page;
     private final JScrollPane scrollPanel;
-    private final JPanel mainPanel = new JPanel();
-    private BasicStroke strokeSize = new BasicStroke(1);
-    private BasicStroke lastStroke = strokeSize;
+    private final JPanel mainPanel = new JPanel(new GridBagLayout());
+    private int strokeSize = 1;
+    private int lastStroke = strokeSize;
     private Color lastColor = Color.BLACK;
+    private boolean recording = false;
+    private ObjectOutputStream oos;
+    private long startTime;
+    
     DrawClient()
     {
         page = 0;
@@ -119,6 +132,31 @@ public class DrawClient extends JPanel
         recordButton.setEnabled(true);
         eraserButton.setEnabled(true);
         drawButton.setEnabled(false);
+        String[] strokeSizes = { "1", "2", "3", "4", "5" };
+        comboBox = new JComboBox(strokeSizes);
+        comboBox.setEnabled(true);
+        comboBox.setEditable(false);
+        //allows you to change stroke size
+        comboBox.addActionListener(new ActionListener()
+        {
+            @Override
+            public void actionPerformed(ActionEvent e) 
+            {
+                strokeSize = comboBox.getSelectedIndex()+1;
+                if(recording)
+                {
+                    try {
+                        oos.writeUTF("/S");
+                        oos.writeInt(comboBox.getSelectedIndex()+1);
+                        oos.writeLong(System.nanoTime()-startTime);
+                    } catch (IOException ex) {
+                        Logger.getLogger(DrawClient.class.getName()).log(Level.SEVERE, null, ex);
+                    }
+                }
+            }
+               
+        });
+        
         
         //allows you to change pages(previous page)
         prevButton.addActionListener(new ActionListener()
@@ -127,6 +165,15 @@ public class DrawClient extends JPanel
             @Override
             public void actionPerformed(ActionEvent e) 
             {
+                if(recording)
+                {
+                    try {
+                        oos.writeUTF("/P");
+                        oos.writeLong(System.nanoTime()-startTime);
+                    } catch (IOException ex) {
+                        Logger.getLogger(DrawClient.class.getName()).log(Level.SEVERE, null, ex);
+                    }
+                }
                 if(page != 0)
                 {
                     page--;
@@ -154,6 +201,15 @@ public class DrawClient extends JPanel
             public void actionPerformed(ActionEvent e) 
             {
                 
+                if(recording)
+                {
+                    try {
+                        oos.writeUTF("/N");
+                        oos.writeLong(System.nanoTime()-startTime);
+                    } catch (IOException ex) {
+                        Logger.getLogger(DrawClient.class.getName()).log(Level.SEVERE, null, ex);
+                    }
+                }
                 prevButton.setEnabled(true);
                 page++;
                 try
@@ -193,7 +249,7 @@ public class DrawClient extends JPanel
                 lastColor = color;
                 lastStroke = strokeSize;
                 color = Color.WHITE;
-                strokeSize = new BasicStroke(10);
+                strokeSize = 10;
                 eraserButton.setEnabled(false);
                 drawButton.setEnabled(true);
             }
@@ -213,10 +269,77 @@ public class DrawClient extends JPanel
                
         });
         
+        recordButton.addActionListener(new ActionListener()
+        {
+            @Override
+            public void actionPerformed(ActionEvent e) 
+            {
+                if(!recording)
+                {
+                    int val =JOptionPane.showConfirmDialog(null, "Are you sure you want to record? "
+                            + "(This will erase all previous drawings.)",
+                            "Recording Confirmation",
+                            JOptionPane.YES_NO_OPTION);
+                    if(val == JOptionPane.YES_OPTION)
+                    {
+                        try {
+                            oos = new ObjectOutputStream(new BufferedOutputStream(new FileOutputStream("temp.txt")));
+                            startTime = System.nanoTime();
+                            Image img;
+                            img = ImageIO.read(getClass().getResource("/resources/StopButton.png"));
+                            img = img.getScaledInstance( 50, 50,  java.awt.Image.SCALE_SMOOTH ) ;
+                            recordButton.setIcon(new ImageIcon(img));
+                            recording = true;
+                            page = 0;
+                            directory.clear();
+                            prevButton.setEnabled(false);
+                            nextButton.setEnabled(true);
+                            undoButton.setEnabled(false);
+                            //init first page
+                            directory.add(new ArrayList<>());
+                            repaint();
+                        } catch (IOException ex) {
+                            JOptionPane.showMessageDialog(null,"Error Occurred creating file!");
+                        }
+                    }
+                }
+                else
+                {
+                    try {
+                        Image img;
+                        img = ImageIO.read(getClass().getResource("/resources/RecordButton.png"));
+                        img = img.getScaledInstance( 50, 50,  java.awt.Image.SCALE_SMOOTH ) ;
+                        recordButton.setIcon(new ImageIcon(img));
+                        recording = false;
+                        oos.close();
+//                        JFileChooser chooser = new JFileChooser(System.getProperty("user.dir"));
+//                        chooser.setFileFilter(new FileNameExtensionFilter(null,"txt"));
+//                        int retrieval = chooser.showSaveDialog(null);
+//                        if (retrieval == JFileChooser.APPROVE_OPTION) 
+//                        {
+//                            File fil = new File("temp.txt");
+//                            File newFil;
+//                            if(!chooser.getSelectedFile().getAbsolutePath().endsWith(".txt"))
+//                                newFil = new File(chooser.getSelectedFile() + ".txt");
+//                            else
+//                                newFil = new File(chooser.getSelectedFile() +"");
+//                            fil.renameTo(newFil);
+//                        }
+                    } catch (IOException ex) {
+                        System.exit(1);
+                    }
+                }
+            }
+               
+        });
+        
+        
+        
+        
         Image img;
         try {
             img = ImageIO.read(getClass().getResource("/resources/UndoButton.png"));
-            img = img.getScaledInstance( 50, 50,  java.awt.Image.SCALE_SMOOTH ) ;
+            img = img.getScaledInstance( 50, 50,  java.awt.Image.SCALE_SMOOTH );
             undoButton.setIcon(new ImageIcon(img));
             undoButton.setRolloverEnabled(true);
             undoButton.setMargin(new Insets(0, 0, 0, 0));
@@ -265,17 +388,13 @@ public class DrawClient extends JPanel
             drawButton.setHorizontalTextPosition(SwingConstants.CENTER);
             
         } catch (IOException ex) {
-            Logger.getLogger(DrawClient.class.getName()).log(Level.SEVERE, null, ex);
+            System.exit(1);
         }
         
+       
         
-        
-        
-        JPanel panel = new JPanel();
-        
-        setPreferredSize(Toolkit.getDefaultToolkit().getScreenSize());
         scrollPanel = new JScrollPane(this);
-        panel = new JPanel(new GridBagLayout());
+        JPanel panel = new JPanel(new GridBagLayout());
         GridBagConstraints c = new GridBagConstraints();
         
         c.anchor = GridBagConstraints.FIRST_LINE_START;
@@ -297,12 +416,14 @@ public class DrawClient extends JPanel
         c.gridy = 0;
         panel.add(recordButton,c);
         
+        c.insets = new Insets(5,10,0,0);
         c.gridx = 4;
         c.gridy = 0;
         c.gridwidth = 3;
         c.gridheight = 1;
         panel.add(colorChooser,c);
         
+        c.insets = new Insets(10,10,0,0);
         c.gridx = 7;
         c.gridy = 0;
         c.gridwidth = 1;
@@ -315,21 +436,35 @@ public class DrawClient extends JPanel
         c.gridheight = 1;
         panel.add(drawButton,c);
         
-        c.fill = GridBagConstraints.BOTH;
+        
+        c.gridx = 9;
+        c.gridy = 0;
+        c.gridwidth = 1;
+        c.gridheight = 1;
+        
+        panel.add(comboBox,c);
+        
+        c.insets = new Insets(0,0,0,0);
+        c.fill = GridBagConstraints.HORIZONTAL;
         c.gridx = 0;
-        c.gridy = 1;
-        c.weighty = .2;
+        c.gridy = 0;
+        c.weightx = 1;
         mainPanel.add(panel,c);
         
         
         c.fill = GridBagConstraints.BOTH;
         c.gridx = 0;
         c.gridy = 1;
-        c.weighty = .8;
+        c.weighty = 1;
+        c.weightx = 1;
         mainPanel.add(scrollPanel,c);
         
     }
-    
+    @Override
+    public Dimension getPreferredSize()
+    {
+        return Toolkit.getDefaultToolkit().getScreenSize();
+    }
     public JPanel getPanel()
     {
         return mainPanel;
@@ -340,7 +475,9 @@ public class DrawClient extends JPanel
     public void stateChanged(ChangeEvent e) 
     {
         color = colorChooser.getColor();
-        System.out.println(color);
+        strokeSize = lastStroke;
+        drawButton.setEnabled(false);
+        eraserButton.setEnabled(true);
     }
     
     //undo last shape
@@ -348,7 +485,15 @@ public class DrawClient extends JPanel
     {
         synchronized(directory)
         {
-            
+            if(recording)
+            {
+                try {
+                    oos.writeUTF("/U");
+                    oos.writeLong(System.nanoTime()-startTime);
+                } catch (IOException ex) {
+                    Logger.getLogger(DrawClient.class.getName()).log(Level.SEVERE, null, ex);
+                }
+            }
             if(directory.get(page).size() > 0)
             {
                 directory.get(page).remove(directory.get(page).size()-1);
@@ -364,6 +509,9 @@ public class DrawClient extends JPanel
     public void paintComponent(Graphics g)
     {
         Graphics2D g2 = (Graphics2D) g;
+        g2.setRenderingHint(
+        RenderingHints.KEY_TEXT_ANTIALIASING,
+        RenderingHints.VALUE_TEXT_ANTIALIAS_ON);
         super.paintComponent(g2);
         synchronized(directory)
         {
@@ -373,7 +521,7 @@ public class DrawClient extends JPanel
                 for(Point point : ary)
                 {
                     g2.setPaint(point.getColor());
-                    g2.setStroke(point.getStroke());
+                    g2.setStroke(new BasicStroke(point.getStroke()));
                     int index = directory.get(page).get(l).indexOf(point);
                     if(index != 0)
                     {
@@ -385,7 +533,10 @@ public class DrawClient extends JPanel
                     //if you press the mouse but dont drag the mouse, still draw a dot
                     else 
                     {
-                        g2.fillRect(point.getXPos(), point.getYPos(), 1,1);
+                        g2.drawLine(point.getXPos(),
+                                   point.getYPos(), 
+                                   point.getXPos(), 
+                                   point.getYPos());
                     }
                     
                 }
@@ -403,7 +554,7 @@ public class DrawClient extends JPanel
         DrawClient panel = new DrawClient();
         
         
-        window.add(panel.getPanel());
+        window.setContentPane(panel.getPanel());
         Dimension dimen = Toolkit.getDefaultToolkit().getScreenSize();
         window.setPreferredSize(new Dimension(dimen.width/2,dimen.height/2));
         window.setDefaultCloseOperation(JFrame.EXIT_ON_CLOSE);
@@ -424,6 +575,17 @@ public class DrawClient extends JPanel
     {
         Point point = new Point(e.getX(),e.getY(),0, color, page,strokeSize);
         directory.get(page).get(directory.get(page).size()-1).add(point);
+        if(recording)
+        {
+            try 
+            {
+                oos.writeUTF("/d");
+                oos.writeObject(point);
+                oos.flush();
+            } catch (IOException ex) {
+                Logger.getLogger(DrawClient.class.getName()).log(Level.SEVERE, null, ex);
+            }
+        }
         repaint();    
         
     }
@@ -442,8 +604,20 @@ public class DrawClient extends JPanel
         undoButton.setEnabled(true);
         directory.get(page).add(new ArrayList<>());
         //if you press the mouse make a starting point
-        Point point = new Point(e.getX(),e.getY(),0, color, page,strokeSize);
+        Point point = new Point(e.getX(),e.getY(),System.nanoTime()-startTime, color, page,strokeSize);
         directory.get(page).get(directory.get(page).size()-1).add(point);
+        if(recording)
+        {
+            try 
+            {
+                oos.writeUTF("/p");
+                oos.writeObject(point);
+                oos.flush();
+            } catch (IOException ex) {
+                Logger.getLogger(DrawClient.class.getName()).log(Level.SEVERE, null, ex);
+            }
+        }
+        repaint();
         
     }
 

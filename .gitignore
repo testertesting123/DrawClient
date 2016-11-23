@@ -13,3 +13,4 @@ hs_err_pid*
 /DrawClient/nbproject/private/
 /DrawClient/build/
 /AnalysisAssign24/nbproject/private/
+*.txt
