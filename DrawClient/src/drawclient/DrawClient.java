@@ -23,19 +23,35 @@ import java.awt.event.MouseEvent;
 import java.awt.event.MouseListener;
 import java.awt.event.MouseMotionListener;
 import java.io.BufferedOutputStream;
+import java.io.ByteArrayInputStream;
+import java.io.ByteArrayOutputStream;
+import java.io.File;
+import java.io.FileInputStream;
 import java.io.FileOutputStream;
 import java.io.IOException;
 import java.io.ObjectOutputStream;
 import java.io.Serializable;
+import java.nio.file.Files;
 import java.util.ArrayList;
 import java.util.logging.Level;
 import java.util.logging.Logger;
+import java.util.zip.ZipEntry;
+import java.util.zip.ZipOutputStream;
 import javax.imageio.ImageIO;
+import javax.sound.sampled.AudioFileFormat;
+import javax.sound.sampled.AudioFormat;
+import javax.sound.sampled.AudioInputStream;
+import javax.sound.sampled.AudioSystem;
+import javax.sound.sampled.DataLine;
+import javax.sound.sampled.LineUnavailableException;
+import javax.sound.sampled.TargetDataLine;
 import javax.swing.ImageIcon;
 import javax.swing.JButton;
 import javax.swing.JColorChooser;
 import javax.swing.JComboBox;
+import javax.swing.JFileChooser;
 import javax.swing.JFrame;
+import javax.swing.JLabel;
 import javax.swing.JOptionPane;
 import javax.swing.JPanel;
 import javax.swing.JScrollPane;
@@ -43,6 +59,7 @@ import javax.swing.SwingConstants;
 import javax.swing.colorchooser.AbstractColorChooserPanel;
 import javax.swing.event.ChangeEvent;
 import javax.swing.event.ChangeListener;
+import javax.swing.filechooser.FileNameExtensionFilter;
 
 /**
  *
@@ -93,6 +110,8 @@ public class DrawClient extends JPanel
     private boolean recording = false;
     private ObjectOutputStream oos;
     private long startTime;
+    private TargetDataLine tdl;
+    private AudioFormat af;
     
     DrawClient()
     {
@@ -143,16 +162,6 @@ public class DrawClient extends JPanel
             public void actionPerformed(ActionEvent e) 
             {
                 strokeSize = comboBox.getSelectedIndex()+1;
-                if(recording)
-                {
-                    try {
-                        oos.writeUTF("/S");
-                        oos.writeInt(comboBox.getSelectedIndex()+1);
-                        oos.writeLong(System.nanoTime()-startTime);
-                    } catch (IOException ex) {
-                        Logger.getLogger(DrawClient.class.getName()).log(Level.SEVERE, null, ex);
-                    }
-                }
             }
                
         });
@@ -168,8 +177,9 @@ public class DrawClient extends JPanel
                 if(recording)
                 {
                     try {
+                        long t = System.nanoTime()-startTime;
                         oos.writeUTF("/P");
-                        oos.writeLong(System.nanoTime()-startTime);
+                        oos.writeLong(t);
                     } catch (IOException ex) {
                         Logger.getLogger(DrawClient.class.getName()).log(Level.SEVERE, null, ex);
                     }
@@ -204,8 +214,9 @@ public class DrawClient extends JPanel
                 if(recording)
                 {
                     try {
+                        long t = System.nanoTime()-startTime;
                         oos.writeUTF("/N");
-                        oos.writeLong(System.nanoTime()-startTime);
+                        oos.writeLong(t);
                     } catch (IOException ex) {
                         Logger.getLogger(DrawClient.class.getName()).log(Level.SEVERE, null, ex);
                     }
@@ -284,12 +295,24 @@ public class DrawClient extends JPanel
                     {
                         try {
                             oos = new ObjectOutputStream(new BufferedOutputStream(new FileOutputStream("temp.txt")));
+                            
+                            //setup audio capture
+                            af = new AudioFormat(16000,16,2,true,true);
+                            DataLine.Info info = new DataLine.Info(
+                                TargetDataLine.class,af);
+                            tdl = (TargetDataLine) AudioSystem.getLine(info);
+                            tdl.open(af);
+                            
+                            recording = true;
+                            
+                            Thread recAudio = new Thread(new RecordAudio());
+                            recAudio.start();
+                            
                             startTime = System.nanoTime();
                             Image img;
                             img = ImageIO.read(getClass().getResource("/resources/StopButton.png"));
                             img = img.getScaledInstance( 50, 50,  java.awt.Image.SCALE_SMOOTH ) ;
                             recordButton.setIcon(new ImageIcon(img));
-                            recording = true;
                             page = 0;
                             directory.clear();
                             prevButton.setEnabled(false);
@@ -300,6 +323,8 @@ public class DrawClient extends JPanel
                             repaint();
                         } catch (IOException ex) {
                             JOptionPane.showMessageDialog(null,"Error Occurred creating file!");
+                        } catch (LineUnavailableException ex) {
+                            Logger.getLogger(DrawClient.class.getName()).log(Level.SEVERE, null, ex);
                         }
                     }
                 }
@@ -311,20 +336,9 @@ public class DrawClient extends JPanel
                         img = img.getScaledInstance( 50, 50,  java.awt.Image.SCALE_SMOOTH ) ;
                         recordButton.setIcon(new ImageIcon(img));
                         recording = false;
+                        oos.writeUTF("/e");
+                        oos.flush();
                         oos.close();
-//                        JFileChooser chooser = new JFileChooser(System.getProperty("user.dir"));
-//                        chooser.setFileFilter(new FileNameExtensionFilter(null,"txt"));
-//                        int retrieval = chooser.showSaveDialog(null);
-//                        if (retrieval == JFileChooser.APPROVE_OPTION) 
-//                        {
-//                            File fil = new File("temp.txt");
-//                            File newFil;
-//                            if(!chooser.getSelectedFile().getAbsolutePath().endsWith(".txt"))
-//                                newFil = new File(chooser.getSelectedFile() + ".txt");
-//                            else
-//                                newFil = new File(chooser.getSelectedFile() +"");
-//                            fil.renameTo(newFil);
-//                        }
                     } catch (IOException ex) {
                         System.exit(1);
                     }
@@ -392,7 +406,8 @@ public class DrawClient extends JPanel
         }
         
        
-        
+        JLabel label = new JLabel("Stroke");
+        JPanel strokePane = new JPanel(new GridBagLayout());
         scrollPanel = new JScrollPane(this);
         JPanel panel = new JPanel(new GridBagLayout());
         GridBagConstraints c = new GridBagConstraints();
@@ -437,12 +452,24 @@ public class DrawClient extends JPanel
         panel.add(drawButton,c);
         
         
+        c.gridx = 0;
+        c.gridy = 0;
+        
+        strokePane.add(label,c);
+        
+        c.gridx = 0;
+        c.gridy = 1;
+        
+        strokePane.add(comboBox,c);
+        
+        
+        
         c.gridx = 9;
         c.gridy = 0;
         c.gridwidth = 1;
         c.gridheight = 1;
         
-        panel.add(comboBox,c);
+        panel.add(strokePane,c);
         
         c.insets = new Insets(0,0,0,0);
         c.fill = GridBagConstraints.HORIZONTAL;
@@ -460,6 +487,97 @@ public class DrawClient extends JPanel
         mainPanel.add(scrollPanel,c);
         
     }
+    
+    private class RecordAudio implements Runnable
+    {
+
+        @Override
+        public void run() 
+        {
+            try {
+                tdl.start();
+                
+                byte[] buffer = new byte[4096];
+                int bytesRead = 0;
+                
+                ByteArrayOutputStream recordBytes = new ByteArrayOutputStream();
+                
+                while (recording) {
+                    bytesRead = tdl.read(buffer, 0, buffer.length);
+                    recordBytes.write(buffer, 0, bytesRead);
+                }
+                if (tdl != null)
+                {
+                    tdl.flush();
+                    tdl.close();
+                }
+                byte[] audioData = recordBytes.toByteArray();
+                ByteArrayInputStream bais = new ByteArrayInputStream(audioData);
+                AudioInputStream audioInputStream = new AudioInputStream(bais, af,
+                        audioData.length / af.getFrameSize());
+                File tempFile = new File("temp.wav");
+                AudioSystem.write(audioInputStream, AudioFileFormat.Type.WAVE, tempFile);
+                
+                audioInputStream.close();
+                recordBytes.close();
+                
+                
+                JFileChooser chooser = new JFileChooser(System.getProperty("user.dir"));
+                chooser.setFileFilter(new FileNameExtensionFilter(null,"zip"));
+                File newFil;
+                int retrieval = chooser.showSaveDialog(null);
+                if (retrieval == JFileChooser.APPROVE_OPTION) 
+                {
+                    if(!chooser.getSelectedFile().getAbsolutePath().endsWith(".zip"))
+                        newFil = new File(chooser.getSelectedFile() + ".zip");
+                    else
+                        newFil = chooser.getSelectedFile();
+                    
+                }
+                else
+                {
+                    newFil = new File("untitled.zip");
+
+                }
+                FileOutputStream fos = new FileOutputStream(newFil);
+
+                ZipOutputStream out =  new ZipOutputStream(fos);
+                
+                String [] filNames = {"temp.txt","temp.wav"};
+                
+                for(int i = 0; i < filNames.length; i++)
+                {
+                    File srcFile = new File(filNames[i]);
+                    FileInputStream fis = new FileInputStream(srcFile);
+                    out.putNextEntry(new ZipEntry(srcFile.getName()));
+                    
+                    int length;
+                    
+                    while ((length = fis.read(buffer)) > 0) 
+                        out.write(buffer, 0, length);
+                        
+                    out.closeEntry();
+                    
+                    fis.close();
+                    Files.delete(srcFile.toPath());
+                }
+                out.close();
+                
+                
+                
+            } catch (IOException ex) {
+                Logger.getLogger(DrawClient.class.getName()).log(Level.SEVERE, null, ex);
+            }
+            
+            
+        }
+
+        
+    }
+    
+    
+    
+    
     @Override
     public Dimension getPreferredSize()
     {
@@ -487,9 +605,10 @@ public class DrawClient extends JPanel
         {
             if(recording)
             {
+                long t = System.nanoTime()-startTime;
                 try {
                     oos.writeUTF("/U");
-                    oos.writeLong(System.nanoTime()-startTime);
+                    oos.writeLong(t);
                 } catch (IOException ex) {
                     Logger.getLogger(DrawClient.class.getName()).log(Level.SEVERE, null, ex);
                 }
@@ -573,7 +692,8 @@ public class DrawClient extends JPanel
     @Override
     public void mouseDragged(MouseEvent e) 
     {
-        Point point = new Point(e.getX(),e.getY(),0, color, page,strokeSize);
+        long t = System.nanoTime()-startTime;
+        Point point = new Point(e.getX(),e.getY(),t, color, page,strokeSize);
         directory.get(page).get(directory.get(page).size()-1).add(point);
         if(recording)
         {
@@ -604,7 +724,8 @@ public class DrawClient extends JPanel
         undoButton.setEnabled(true);
         directory.get(page).add(new ArrayList<>());
         //if you press the mouse make a starting point
-        Point point = new Point(e.getX(),e.getY(),System.nanoTime()-startTime, color, page,strokeSize);
+        long t = System.nanoTime()-startTime;
+        Point point = new Point(e.getX(),e.getY(),t, color, page,strokeSize);
         directory.get(page).get(directory.get(page).size()-1).add(point);
         if(recording)
         {
