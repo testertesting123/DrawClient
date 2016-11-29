@@ -105,7 +105,6 @@ public class DrawClient extends JPanel
     private final JScrollPane scrollPanel;
     private final JPanel mainPanel = new JPanel(new GridBagLayout());
     private int strokeSize = 1;
-    private int lastStroke = strokeSize;
     private Color lastColor = Color.BLACK;
     private boolean recording = false;
     private ObjectOutputStream oos;
@@ -180,6 +179,7 @@ public class DrawClient extends JPanel
                         long t = System.nanoTime()-startTime;
                         oos.writeUTF("/P");
                         oos.writeLong(t);
+                        oos.flush();
                     } catch (IOException ex) {
                         Logger.getLogger(DrawClient.class.getName()).log(Level.SEVERE, null, ex);
                     }
@@ -217,6 +217,7 @@ public class DrawClient extends JPanel
                         long t = System.nanoTime()-startTime;
                         oos.writeUTF("/N");
                         oos.writeLong(t);
+                        oos.flush();
                     } catch (IOException ex) {
                         Logger.getLogger(DrawClient.class.getName()).log(Level.SEVERE, null, ex);
                     }
@@ -258,9 +259,7 @@ public class DrawClient extends JPanel
             public void actionPerformed(ActionEvent e) 
             {
                 lastColor = color;
-                lastStroke = strokeSize;
                 color = Color.WHITE;
-                strokeSize = 10;
                 eraserButton.setEnabled(false);
                 drawButton.setEnabled(true);
             }
@@ -273,7 +272,6 @@ public class DrawClient extends JPanel
             public void actionPerformed(ActionEvent e) 
             {
                 color = lastColor;
-                strokeSize = lastStroke;
                 eraserButton.setEnabled(true);
                 drawButton.setEnabled(false);
             }
@@ -593,7 +591,6 @@ public class DrawClient extends JPanel
     public void stateChanged(ChangeEvent e) 
     {
         color = colorChooser.getColor();
-        strokeSize = lastStroke;
         drawButton.setEnabled(false);
         eraserButton.setEnabled(true);
     }
@@ -609,6 +606,7 @@ public class DrawClient extends JPanel
                 try {
                     oos.writeUTF("/U");
                     oos.writeLong(t);
+                    oos.flush();
                 } catch (IOException ex) {
                     Logger.getLogger(DrawClient.class.getName()).log(Level.SEVERE, null, ex);
                 }
@@ -629,8 +627,8 @@ public class DrawClient extends JPanel
     {
         Graphics2D g2 = (Graphics2D) g;
         g2.setRenderingHint(
-        RenderingHints.KEY_TEXT_ANTIALIASING,
-        RenderingHints.VALUE_TEXT_ANTIALIAS_ON);
+        RenderingHints.KEY_ANTIALIASING,
+        RenderingHints.VALUE_ANTIALIAS_ON);
         super.paintComponent(g2);
         synchronized(directory)
         {
