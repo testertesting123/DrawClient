@@ -61,10 +61,7 @@ import javax.swing.event.ChangeEvent;
 import javax.swing.event.ChangeListener;
 import javax.swing.filechooser.FileNameExtensionFilter;
 
-/**
- *
- * @author Doreen
- */
+
 public class DrawClient extends JPanel 
     implements MouseMotionListener, MouseListener, ChangeListener{
 
@@ -404,7 +401,7 @@ public class DrawClient extends JPanel
         }
         
        
-        JLabel label = new JLabel("Stroke");
+        JLabel label = new JLabel("Stroke"); 
         JPanel strokePane = new JPanel(new GridBagLayout());
         scrollPanel = new JScrollPane(this);
         JPanel panel = new JPanel(new GridBagLayout());
